@@ -1,0 +1,10 @@
+{
+  "default": {
+    "host": "${PGHOST}",
+    "port": "${PGPORT}",
+    "database": "${PGDATABASE}",
+    "user": "${PGUSER}",
+    "password": "${PGPASSWORD}",
+    "schema": "outbox_relay"
+  }
+}
