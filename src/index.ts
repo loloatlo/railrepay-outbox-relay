@@ -29,6 +29,7 @@ import { createHealthRoutes } from './routes/health.routes.js';
 import { createMetricsRoutes } from './routes/metrics.routes.js';
 import { OutboxPoller, type SchemaConfig } from './services/outbox-poller.service.js';
 import { KafkaPublisher } from './services/kafka-publisher.service.js';
+import * as net from 'net';
 
 /**
  * Create logger instance
@@ -44,6 +45,111 @@ const logger = createLogger({
 let dbPool: Pool | null = null;
 let kafkaProducer: Producer | null = null;
 let pollingIntervalId: NodeJS.Timeout | null = null;
+
+/**
+ * Test TCP connectivity to Kafka brokers
+ *
+ * This diagnostic function tests connectivity to the bootstrap broker
+ * and individual broker hostnames that Confluent Cloud returns in metadata.
+ * Helps diagnose "This server does not host this topic-partition" errors.
+ */
+async function testBrokerConnectivity(): Promise<void> {
+  logger.info('=== KAFKA BROKER CONNECTIVITY TEST ===');
+
+  // Extract bootstrap hostname from env
+  const bootstrapServer = process.env.KAFKA_BROKERS || 'localhost:9092';
+  const [bootstrapHost] = bootstrapServer.split(':');
+
+  // Known Confluent Cloud broker hostnames for pkc-l6wr6 cluster
+  // These are the individual brokers that handle partition leadership
+  const brokerHosts = [
+    bootstrapHost,  // Bootstrap: pkc-l6wr6.europe-west2.gcp.confluent.cloud
+    `b0-${bootstrapHost}`,
+    `b1-${bootstrapHost}`,
+    `b2-${bootstrapHost}`,
+    `b3-${bootstrapHost}`,
+    `b4-${bootstrapHost}`,
+    `b5-${bootstrapHost}`,
+    `b6-${bootstrapHost}`,
+    `b7-${bootstrapHost}`,
+    `b8-${bootstrapHost}`,
+    `b9-${bootstrapHost}`,
+    `b10-${bootstrapHost}`,
+    `b11-${bootstrapHost}`,
+    `b12-${bootstrapHost}`,
+  ];
+
+  const results: { host: string; reachable: boolean; error?: string }[] = [];
+
+  for (const host of brokerHosts) {
+    try {
+      const reachable = await testTcpConnection(host, 9092, 5000);
+      results.push({ host, reachable });
+      if (reachable) {
+        logger.info(`✅ REACHABLE: ${host}:9092`);
+      } else {
+        logger.error(`❌ UNREACHABLE (timeout): ${host}:9092`);
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      results.push({ host, reachable: false, error: errorMsg });
+      logger.error(`❌ UNREACHABLE: ${host}:9092`, { error: errorMsg });
+    }
+  }
+
+  // Summary
+  const reachableCount = results.filter(r => r.reachable).length;
+  const unreachableCount = results.filter(r => !r.reachable).length;
+
+  logger.info('=== CONNECTIVITY TEST SUMMARY ===', {
+    totalTested: results.length,
+    reachable: reachableCount,
+    unreachable: unreachableCount,
+    unreachableBrokers: results.filter(r => !r.reachable).map(r => r.host),
+  });
+
+  if (unreachableCount > 0 && reachableCount > 0) {
+    logger.warn('PARTIAL CONNECTIVITY: Some brokers unreachable. This causes "This server does not host this topic-partition" errors when partition leaders are on unreachable brokers.');
+  } else if (unreachableCount === results.length) {
+    logger.error('NO CONNECTIVITY: All brokers unreachable. Check DNS, firewall, and egress rules.');
+  }
+}
+
+/**
+ * Test TCP connection to a host:port with timeout
+ */
+function testTcpConnection(host: string, port: number, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    let resolved = false;
+
+    const cleanup = () => {
+      if (!resolved) {
+        resolved = true;
+        socket.destroy();
+      }
+    };
+
+    socket.setTimeout(timeoutMs);
+
+    socket.on('connect', () => {
+      cleanup();
+      resolve(true);
+    });
+
+    socket.on('timeout', () => {
+      cleanup();
+      resolve(false);
+    });
+
+    socket.on('error', () => {
+      cleanup();
+      resolve(false);
+    });
+
+    socket.connect(port, host);
+  });
+}
 
 /**
  * Create Express application with health and metrics routes
@@ -456,6 +562,9 @@ export async function main(deps: MainDependencies = {}): Promise<void> {
 
   try {
     logger.info('Starting outbox-relay service');
+
+    // Run broker connectivity diagnostics before connecting
+    await testBrokerConnectivity();
 
     // Initialize database pool
     const pool = await initDb();
