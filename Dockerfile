@@ -21,7 +21,8 @@ COPY package*.json ./
 COPY vendor ./vendor
 
 # Install all dependencies (including devDependencies for build)
-RUN npm ci
+# Using npm install instead of npm ci due to file: dependency on vendor/metrics-pusher
+RUN npm install
 
 # Copy source code
 COPY . .
