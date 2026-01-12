@@ -5,8 +5,9 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
 
-# Copy package files
+# Copy package files and vendor dependencies
 COPY package*.json ./
+COPY vendor ./vendor
 
 # Install production dependencies only
 RUN npm ci --only=production && npm cache clean --force
@@ -15,8 +16,9 @@ RUN npm ci --only=production && npm cache clean --force
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Copy package files
+# Copy package files and vendor dependencies
 COPY package*.json ./
+COPY vendor ./vendor
 
 # Install all dependencies (including devDependencies for build)
 RUN npm ci
@@ -34,6 +36,7 @@ WORKDIR /app
 # Install production dependencies for ts-node/esm loader
 # Required for ESM execution: "start": "node --loader ts-node/esm src/index.ts"
 COPY package*.json ./
+COPY vendor ./vendor
 RUN npm ci --only=production && \
     npm install ts-node node-pg-migrate && \
     npm cache clean --force
