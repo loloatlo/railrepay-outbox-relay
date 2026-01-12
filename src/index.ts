@@ -606,7 +606,7 @@ export async function main(deps: MainDependencies = {}): Promise<void> {
       metricsPusher = new MetricsPusher({
         serviceName: process.env.SERVICE_NAME || 'outbox-relay',
         alloyUrl: process.env.ALLOY_PUSH_URL,
-        pushInterval: parseInt(process.env.METRICS_PUSH_INTERVAL || '15000', 10) / 1000,
+        pushInterval: parseInt(process.env.METRICS_PUSH_INTERVAL || '15', 10),
       });
       await metricsPusher.start();
       logger.info('Metrics pusher started', { alloyUrl: process.env.ALLOY_PUSH_URL });
