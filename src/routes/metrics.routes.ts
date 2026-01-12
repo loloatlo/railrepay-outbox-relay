@@ -19,8 +19,14 @@
  */
 
 import { Router, type Request, type Response } from 'express';
-import { register, Counter, Histogram } from 'prom-client';
+import { getRegistry, Counter, Histogram } from '@railrepay/metrics-pusher';
 import { createLogger } from '@railrepay/winston-logger';
+
+/**
+ * Get shared Prometheus registry for metrics collection
+ * This registry is used by MetricsPusher to push metrics to Alloy
+ */
+const registry = getRegistry();
 
 /**
  * Create logger instance
@@ -39,6 +45,7 @@ const eventsPolledCounter = new Counter({
   name: 'events_polled_total',
   help: 'Total number of events polled from outbox tables',
   labelNames: ['schema', 'table'],
+  registers: [registry],
 });
 
 // Counter: Events published to Kafka
@@ -46,6 +53,7 @@ const eventsPublishedCounter = new Counter({
   name: 'events_published_total',
   help: 'Total number of events successfully published to Kafka',
   labelNames: ['schema', 'table', 'event_type'],
+  registers: [registry],
 });
 
 // Counter: Events failed to publish (moved to DLQ)
@@ -53,6 +61,7 @@ const eventsFailedCounter = new Counter({
   name: 'events_failed_total',
   help: 'Total number of events that failed to publish (moved to DLQ)',
   labelNames: ['schema', 'table', 'event_type'],
+  registers: [registry],
 });
 
 // Histogram: Polling operation latency
@@ -61,6 +70,7 @@ const pollLatencyHistogram = new Histogram({
   help: 'Histogram of polling operation duration in seconds',
   labelNames: ['schema', 'table'],
   buckets: [0.01, 0.05, 0.1, 0.5, 1, 2, 5, 10], // 10ms to 10s
+  registers: [registry],
 });
 
 /**
@@ -127,10 +137,10 @@ export function createMetricsRoutes(): Router {
   router.get('/', async (req: Request, res: Response) => {
     try {
       // Set Content-Type header for Prometheus format
-      res.set('Content-Type', register.contentType);
+      res.set('Content-Type', registry.contentType);
 
-      // Get metrics from Prometheus registry
-      const metrics = await register.metrics();
+      // Get metrics from shared Prometheus registry
+      const metrics = await registry.metrics();
 
       logger.debug('Metrics endpoint called', {
         metricsLength: metrics.length,

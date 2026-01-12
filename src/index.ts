@@ -25,6 +25,7 @@ import express, { type Express } from 'express';
 import { Pool } from 'pg';
 import { Kafka, type Producer } from 'kafkajs';
 import { createLogger } from '@railrepay/winston-logger';
+import { MetricsPusher } from '@railrepay/metrics-pusher';
 import { createHealthRoutes } from './routes/health.routes.js';
 import {
   createMetricsRoutes,
@@ -51,6 +52,7 @@ const logger = createLogger({
 let dbPool: Pool | null = null;
 let kafkaProducer: Producer | null = null;
 let pollingIntervalId: NodeJS.Timeout | null = null;
+let metricsPusher: MetricsPusher | null = null;
 
 /**
  * Test TCP connectivity to Kafka brokers
@@ -390,6 +392,13 @@ export async function gracefulShutdown(
       pollingIntervalId = null;
     }
 
+    // Stop metrics pusher
+    if (metricsPusher) {
+      logger.info('Stopping metrics pusher');
+      metricsPusher.stop();
+      metricsPusher = null;
+    }
+
     // Close Kafka producer
     if (resources.producer) {
       logger.info('Disconnecting Kafka producer');
@@ -591,6 +600,17 @@ export async function main(deps: MainDependencies = {}): Promise<void> {
 
     // Initialize Kafka producer
     const producer = await initKafka();
+
+    // Initialize metrics pusher (push to Alloy gateway)
+    if (process.env.ALLOY_PUSH_URL) {
+      metricsPusher = new MetricsPusher({
+        serviceName: process.env.SERVICE_NAME || 'outbox-relay',
+        alloyUrl: process.env.ALLOY_PUSH_URL,
+        pushInterval: parseInt(process.env.METRICS_PUSH_INTERVAL || '15000', 10) / 1000,
+      });
+      await metricsPusher.start();
+      logger.info('Metrics pusher started', { alloyUrl: process.env.ALLOY_PUSH_URL });
+    }
 
     // Create Express app
     const app = createAppFn();
