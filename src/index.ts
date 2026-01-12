@@ -26,7 +26,13 @@ import { Pool } from 'pg';
 import { Kafka, type Producer } from 'kafkajs';
 import { createLogger } from '@railrepay/winston-logger';
 import { createHealthRoutes } from './routes/health.routes.js';
-import { createMetricsRoutes } from './routes/metrics.routes.js';
+import {
+  createMetricsRoutes,
+  incrementEventsPolled,
+  incrementEventsPublished,
+  incrementEventsFailed,
+  recordPollLatency,
+} from './routes/metrics.routes.js';
 import { OutboxPoller, type SchemaConfig } from './services/outbox-poller.service.js';
 import { KafkaPublisher } from './services/kafka-publisher.service.js';
 import * as net from 'net';
@@ -487,13 +493,24 @@ function startPollingLoop(pool: Pool, producer: Producer, intervalMs: number = 1
   // Single poll iteration
   const pollOnce = async (): Promise<void> => {
     for (const config of schemaConfigs) {
+      const pollStartTime = Date.now();
       try {
         const events = await poller.poll(config.schema, config.table, config.timestampColumn);
 
+        // Record poll latency
+        const pollDurationSeconds = (Date.now() - pollStartTime) / 1000;
+        recordPollLatency(config.schema, config.table, pollDurationSeconds);
+
+        // Increment polled counter for each event
         for (const event of events) {
+          incrementEventsPolled(config.schema, config.table);
           try {
             await publisher.publish(event, config.schema, config.table, config.timestampColumn);
+            // Increment published counter on success
+            incrementEventsPublished(config.schema, config.table, event.event_type);
           } catch (publishError) {
+            // Increment failed counter on error
+            incrementEventsFailed(config.schema, config.table, event.event_type);
             logger.error('Failed to publish event', {
               eventId: event.id,
               schema: config.schema,
@@ -503,6 +520,9 @@ function startPollingLoop(pool: Pool, producer: Producer, intervalMs: number = 1
           }
         }
       } catch (pollError) {
+        // Record poll latency even on failure
+        const pollDurationSeconds = (Date.now() - pollStartTime) / 1000;
+        recordPollLatency(config.schema, config.table, pollDurationSeconds);
         logger.error('Failed to poll schema', {
           schema: config.schema,
           error: pollError instanceof Error ? pollError.message : 'Unknown error',
