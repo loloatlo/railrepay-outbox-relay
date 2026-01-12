@@ -5,25 +5,21 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
 
-# Copy package files and vendor dependencies
+# Copy package files
 COPY package*.json ./
-COPY vendor ./vendor
 
 # Install production dependencies only
-# Using npm install instead of npm ci due to file: dependency on vendor/metrics-pusher
-RUN npm install --omit=dev && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 
 # Stage 2: Build TypeScript
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Copy package files and vendor dependencies
+# Copy package files
 COPY package*.json ./
-COPY vendor ./vendor
 
 # Install all dependencies (including devDependencies for build)
-# Using npm install instead of npm ci due to file: dependency on vendor/metrics-pusher
-RUN npm install
+RUN npm ci
 
 # Copy source code
 COPY . .
@@ -37,10 +33,8 @@ WORKDIR /app
 
 # Install production dependencies for ts-node/esm loader
 # Required for ESM execution: "start": "node --loader ts-node/esm src/index.ts"
-# Using npm install instead of npm ci due to file: dependency on vendor/metrics-pusher
 COPY package*.json ./
-COPY vendor ./vendor
-RUN npm install --omit=dev && \
+RUN npm ci --omit=dev && \
     npm install ts-node node-pg-migrate && \
     npm cache clean --force
 
