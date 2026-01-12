@@ -42,7 +42,7 @@
     "vitest": "^1.0.0"
   },
   "dependencies": {
-    "@railrepay/metrics-pusher": "^1.0.1",
+    "@railrepay/metrics-pusher": "^1.1.0",
     "@railrepay/postgres-client": "^1.0.0",
     "@railrepay/winston-logger": "^1.0.0",
     "express": "^4.18.0",
