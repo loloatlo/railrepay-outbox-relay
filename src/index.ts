@@ -432,6 +432,7 @@ const SCHEMA_TABLE_MAP: Record<string, { table: string; timestampColumn: 'publis
   darwin_ingestor: { table: 'outbox_events', timestampColumn: 'published_at' },
   journey_matcher: { table: 'outbox', timestampColumn: 'processed_at' },
   data_retention: { table: 'outbox', timestampColumn: 'published_at' },
+  delay_tracker: { table: 'outbox', timestampColumn: 'processed_at' },
 };
 
 /**
@@ -439,7 +440,7 @@ const SCHEMA_TABLE_MAP: Record<string, { table: string; timestampColumn: 'publis
  *
  * @returns Array of SchemaConfig objects
  */
-function parseSchemaConfigs(): SchemaConfig[] {
+export function parseSchemaConfigs(): SchemaConfig[] {
   const schemasEnv = process.env.OUTBOX_SCHEMAS || '';
   const schemaNames = schemasEnv.split(',').map(s => s.trim()).filter(Boolean);
 
