@@ -123,7 +123,10 @@ export class OutboxPoller {
 
       const result: QueryResult<OutboxEvent> = await client.query(query, [this.batchSize]);
 
-      logger.info('Polled events from outbox', {
+      // Log at debug when idle (0 events) to reduce log volume;
+      // log at info when events are found for visibility.
+      const logLevel = result.rows.length > 0 ? 'info' : 'debug';
+      logger[logLevel]('Polled events from outbox', {
         schema: schemaName,
         table: tableName,
         eventCount: result.rows.length,

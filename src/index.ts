@@ -388,7 +388,7 @@ export async function gracefulShutdown(
     // Stop polling loop
     if (pollingIntervalId) {
       logger.info('Stopping polling loop');
-      clearInterval(pollingIntervalId);
+      clearTimeout(pollingIntervalId);
       pollingIntervalId = null;
     }
 
@@ -542,23 +542,32 @@ function startPollingLoop(pool: Pool, producer: Producer, intervalMs: number = 1
     }
   };
 
-  // Start polling interval
-  pollingIntervalId = setInterval(async () => {
-    try {
-      await pollOnce();
-    } catch (error) {
-      logger.error('Polling iteration failed', {
+  // Recursive setTimeout: schedule next poll only AFTER current poll completes.
+  // This prevents poll stacking when pollOnce() takes longer than intervalMs.
+  const scheduleNextPoll = (): void => {
+    pollingIntervalId = setTimeout(async () => {
+      try {
+        await pollOnce();
+      } catch (error) {
+        logger.error('Polling iteration failed', {
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+      // Schedule next poll only after this one finishes
+      scheduleNextPoll();
+    }, intervalMs);
+  };
+
+  // Run immediately on startup, then begin recurring schedule
+  pollOnce()
+    .catch(error => {
+      logger.error('Initial poll failed', {
         error: error instanceof Error ? error.message : 'Unknown error',
       });
-    }
-  }, intervalMs);
-
-  // Also run immediately on startup
-  pollOnce().catch(error => {
-    logger.error('Initial poll failed', {
-      error: error instanceof Error ? error.message : 'Unknown error',
+    })
+    .finally(() => {
+      scheduleNextPoll();
     });
-  });
 }
 
 /**
