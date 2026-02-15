@@ -433,6 +433,7 @@ const SCHEMA_TABLE_MAP: Record<string, { table: string; timestampColumn: 'publis
   journey_matcher: { table: 'outbox', timestampColumn: 'processed_at' },
   data_retention: { table: 'outbox', timestampColumn: 'published_at' },
   delay_tracker: { table: 'outbox', timestampColumn: 'processed_at' },
+  evaluation_coordinator: { table: 'outbox', timestampColumn: 'published_at' }, // AC-11: BL-146
 };
 
 /**
